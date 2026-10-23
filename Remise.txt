@@ -1,0 +1,16 @@
+Remise - TP1 : Jeu d'échecs
+
+Dépôt GitHub : https://github.com/Lenrics-01/TP1-AppWeb2_Jeu_d-checs
+
+Membres de l'équipe : 
+- Gouife à Djiben Eric Christian
+- Laurore, Michael
+- Chirane Massyle
+- Nleukeu Ngueda Sem Chrysler
+
+Tag Git du commit remis : v1
+Tag des images Docker à corriger : sha-f62ea7c
+
+Images :
+- ghcr.io/lenrics-01/tp1-appweb2-jeu-d-checs-server:sha-f62ea7c
+- ghcr.io/lenrics-01/tp1-appweb2-jeu-d-checs-client:sha-f62ea7c

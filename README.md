@@ -11,15 +11,19 @@ Deux personnes jouent aux échecs, chacune dans son navigateur. On se connecte a
 Prérequis : Node.js 22.13 ou plus récent (24 recommandé).
 
 1. Créer une application GitHub OAuth de développement (GitHub → Settings → Developer settings → OAuth Apps) :
+
    - Homepage URL : `http://localhost:3000`
    - Authorization callback URL : `http://localhost:3000/login`
 2. Préparer le projet :
+
    ```bash
    ./setup.sh          # copie .env.example en .env, puis npm install
    ```
+
    (ou à la main : `cp .env.example .env` puis `npm install`)
 3. Remplir `GITHUB_CLIENT_ID` et `GITHUB_CLIENT_SECRET` dans `.env`.
 4. Lancer :
+
    ```bash
    npm run dev         # API sur http://localhost:4000, site sur http://localhost:3000
    npm test            # tests unitaires et d'intégration de l'API
@@ -55,12 +59,12 @@ navigateur ──HTTP──▶ client (React Router, :3000) ──HTTP + jeton�
 
 ### Rendu côté serveur ou côté client
 
-| Route | Rendu | Pourquoi |
-|---|---|---|
-| `/` (accueil, classement, historique) | serveur | Les données arrivent dans le HTML, sans écran de chargement ; le jeton reste côté serveur. |
-| `/games/:code` | serveur au premier affichage, puis client | L'échiquier est visible tout de suite ; ensuite, le polling et les coups mettent à jour la page sans la recharger. |
-| `/lobby/:code` | serveur puis polling | Affiche le code, puis redirige vers la partie dès que l'adversaire rejoint. |
-| `/login`, `/logout` | serveur seulement | Redirections OAuth et gestion du cookie : rien à afficher côté client. |
+| Route                                   | Rendu                                     | Pourquoi                                                                                                             |
+| --------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `/` (accueil, classement, historique) | serveur                                   | Les données arrivent dans le HTML, sans écran de chargement ; le jeton reste côté serveur.                       |
+| `/games/:code`                        | serveur au premier affichage, puis client | L'échiquier est visible tout de suite ; ensuite, le polling et les coups mettent à jour la page sans la recharger. |
+| `/lobby/:code`                        | serveur puis polling                      | Affiche le code, puis redirige vers la partie dès que l'adversaire rejoint.                                         |
+| `/login`, `/logout`                 | serveur seulement                         | Redirections OAuth et gestion du cookie : rien à afficher côté client.                                            |
 
 ### Choix de chess.js
 
@@ -72,18 +76,18 @@ navigateur ──HTTP──▶ client (React Router, :3000) ──HTTP + jeton�
 
 Toutes les routes, sauf la connexion et le classement, exigent `Authorization: Bearer <jeton>`.
 
-| Méthode | Route | Rôle | Refus |
-|---|---|---|---|
-| POST | `/api/auth/github` | `{ code, redirectUri }` → `{ token, player }` | 401 connexion GitHub échouée |
-| POST | `/api/auth/logout` | révoque le jeton | |
-| GET | `/api/me` | le joueur connecté (nom, Elo) | 401 |
-| GET | `/api/me/games` | historique des parties terminées | |
-| GET | `/api/leaderboard` | 10 meilleurs Elo | |
-| POST | `/api/games` | crée une partie → `{ code }` | |
-| POST | `/api/games/join` | `{ code }` rejoint, couleurs tirées au sort | 404 code inconnu, 409 déjà utilisé, 400 contre soi-même |
-| GET | `/api/games/:code` | état de la partie (utilisé par le polling) | 403 si on n'y joue pas |
-| POST | `/api/games/:code/moves` | `{ from, to, promotion? }` | 400 illégal, 409 hors tour, 409 partie terminée |
-| POST | `/api/games/:code/resign` | abandon : défaite pour soi | 409 partie terminée |
+| Méthode | Route                       | Rôle                                              | Refus                                                       |
+| -------- | --------------------------- | -------------------------------------------------- | ----------------------------------------------------------- |
+| POST     | `/api/auth/github`        | `{ code, redirectUri }` → `{ token, player }` | 401 connexion GitHub échouée                              |
+| POST     | `/api/auth/logout`        | révoque le jeton                                  |                                                             |
+| GET      | `/api/me`                 | le joueur connecté (nom, Elo)                     | 401                                                         |
+| GET      | `/api/me/games`           | historique des parties terminées                  |                                                             |
+| GET      | `/api/leaderboard`        | 10 meilleurs Elo                                   |                                                             |
+| POST     | `/api/games`              | crée une partie →`{ code }`                    |                                                             |
+| POST     | `/api/games/join`         | `{ code }` rejoint, couleurs tirées au sort     | 404 code inconnu, 409 déjà utilisé, 400 contre soi-même |
+| GET      | `/api/games/:code`        | état de la partie (utilisé par le polling)       | 403 si on n'y joue pas                                      |
+| POST     | `/api/games/:code/moves`  | `{ from, to, promotion? }`                       | 400 illégal, 409 hors tour, 409 partie terminée           |
+| POST     | `/api/games/:code/resign` | abandon : défaite pour soi                        | 409 partie terminée                                        |
 
 ## Tests
 
