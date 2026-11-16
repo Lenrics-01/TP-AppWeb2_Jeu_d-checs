@@ -85,13 +85,15 @@ const REASONS = {
   repetition: 'par triple répétition',
   insufficient_material: 'par matériel insuffisant',
   fifty_moves: 'par la règle des 50 coups',
+  disconnect: 'par abandon (déconnexion)',
 };
 
 export default function Game({ loaderData }) {
   // La version la plus récente de la partie : celle du loader (premier affichage,
   // ou après notre coup) ou celle reçue par Socket.IO (coup de l'adversaire).
   // presence : qui est en ligne, temps restant d'un joueur déconnecté, spectateurs.
-  const { game, presence } = useGameSocket(loaderData.game);
+  // connected : false après une coupure réseau (null avant la première connexion).
+  const { game, presence, connected } = useGameSocket(loaderData.game);
   // useFetcher envoie un coup ou l'abandon à l'action de cette page, sans changer d'URL.
   // mover.state : 'idle' ou envoi en cours ; mover.data : la réponse de l'action.
   const mover = useFetcher();
@@ -136,6 +138,14 @@ export default function Game({ loaderData }) {
 
   return (
     <div className="game-layout">
+      {/* Récit 10 : réseau coupé. Socket.IO se reconnecte tout seul ; à la reconnexion,
+          useGameSocket renvoie game:join et la partie reprend avec l'état complet.
+          « === false » : on n'affiche rien pendant la toute première connexion. */}
+      {connected === false && (
+        <p className="reconnect-banner" role="status">
+          Connexion perdue, reconnexion…
+        </p>
+      )}
       <div className="board-column">
         {/* L'adversaire en haut, soi-même en bas (en spectateur : noirs en haut, blancs en bas). */}
         {/* On passe la présence de l'adversaire : pastille et éventuel compte à rebours. */}

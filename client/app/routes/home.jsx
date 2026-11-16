@@ -67,6 +67,7 @@ const REASON_LABELS = {
   repetition: 'répétition',
   insufficient_material: 'matériel insuffisant',
   fifty_moves: '50 coups',
+  disconnect: 'déconnexion',
 };
 
 export default function Home({ loaderData }) {

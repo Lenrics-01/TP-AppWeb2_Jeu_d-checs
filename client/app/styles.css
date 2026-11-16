@@ -634,3 +634,17 @@ th {
   font-weight: 600;
   text-align: center;
 }
+
+/* ---------------------------------------------------------------- Reconnexion (projet 2) */
+.reconnect-banner {
+  /* .game-layout est une grille à deux colonnes : la bannière prend toute la largeur. */
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--surface-deep);
+  color: var(--danger);
+  font-weight: 600;
+  text-align: center;
+}
