@@ -39,15 +39,25 @@ const server = app.listen(port, () => {
   console.log(`Client prêt sur http://localhost:${port}`);
 });
 // Le passage de HTTP à WebSocket arrive par l'événement « upgrade » du serveur
-// HTTP, pas par Express : on le confie aussi au proxy.
-server.on('upgrade', socketProxy.upgrade);
+// HTTP, pas par Express : on le confie aussi au proxy. On garde chaque WebSocket
+// ouvert, car closeAllConnections() ne les ferme pas (voir l'arrêt plus bas).
+const webSockets = new Set();
+server.on('upgrade', (req, socket, head) => {
+  webSockets.add(socket);
+  socket.on('close', () => webSockets.delete(socket));
+  socketProxy.upgrade(req, socket, head);
+});
 
 // docker compose stop envoie SIGTERM. server.close() attend la fin des requêtes en
 // cours (un loader qui attend l'API, par exemple) : sans closeAllConnections(), Docker
 // perd patience et tue le conteneur (code 137) au lieu d'un arrêt propre (code 0).
+// Les WebSocket relayés vers l'API ne sont pas fermés par closeAllConnections() :
+// on les ferme nous-mêmes, sinon server.close() attendrait indéfiniment.
+// Le navigateur se reconnectera tout seul quand le client redémarrera.
 for (const signal of ['SIGTERM', 'SIGINT']) {
   process.on(signal, () => {
     server.close(() => process.exit(0));
     server.closeAllConnections();
+    for (const socket of webSockets) socket.destroy();
   });
 }
