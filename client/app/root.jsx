@@ -34,14 +34,6 @@ export async function loader({ request }) {
   return { player: res.ok ? res.data : null };
 }
 
-// Pas besoin de relire /api/me quand seule la partie est rafraîchie par le polling.
-export function shouldRevalidate({ formMethod, currentUrl, nextUrl, defaultShouldRevalidate }) {
-  // Une action ou un changement de route peut modifier les données racines.
-  if (formMethod || currentUrl.pathname !== nextUrl.pathname) return defaultShouldRevalidate;
-  // Le polling d'une partie ne doit pas recharger le joueur chaque seconde.
-  return false;
-}
-
 // Layout : le squelette HTML commun à toutes les pages (en-tête + page courante).
 // Il est rendu d'abord sur le serveur, puis repris par React dans le navigateur.
 export function Layout({ children }) {
