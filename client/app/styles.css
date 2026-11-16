@@ -583,3 +583,43 @@ th {
     font-size: 2rem;
   }
 }
+
+/* ---------------------------------------------------------------- Présence (projet 2) */
+.player-bar-wrap {
+  display: flex;
+  flex-direction: column;
+}
+.online-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.online-dot .dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: #777;
+}
+.online-dot.on {
+  color: var(--up);
+}
+.online-dot.on .dot {
+  background: var(--up);
+}
+.online-dot.off .dot {
+  background: #777;
+}
+.countdown {
+  margin: 0 0 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  color: var(--danger);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.spectators {
+  margin-top: 0;
+}

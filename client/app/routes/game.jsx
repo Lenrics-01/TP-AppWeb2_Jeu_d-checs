@@ -13,6 +13,8 @@ import { requireToken } from '../session.js';
 import ChessBoard from '../components/ChessBoard.jsx';
 // Le hook reçoit la partie en direct par Socket.IO (coups de l'adversaire).
 import { useGameSocket } from '../useGameSocket.js';
+// Pastille en ligne / hors ligne, compte à rebours et nombre de spectateurs.
+import { Countdown, OnlineDot, SpectatorCount } from '../components/Presence.jsx';
 
 export function meta({ params }) {
   // params.code vient du segment dynamique games/:code.
@@ -80,7 +82,8 @@ const REASONS = {
 export default function Game({ loaderData }) {
   // La version la plus récente de la partie : celle du loader (premier affichage,
   // ou après notre coup) ou celle reçue par Socket.IO (coup de l'adversaire).
-  const { game } = useGameSocket(loaderData.game);
+  // presence : qui est en ligne, temps restant d'un joueur déconnecté, spectateurs.
+  const { game, presence } = useGameSocket(loaderData.game);
   // useFetcher envoie un coup ou l'abandon à l'action de cette page, sans changer d'URL.
   // mover.state : 'idle' ou envoi en cours ; mover.data : la réponse de l'action.
   const mover = useFetcher();
@@ -116,7 +119,14 @@ export default function Game({ loaderData }) {
     <div className="game-layout">
       <div className="board-column">
         {/* L'adversaire en haut, soi-même en bas. */}
-        <PlayerBar player={game[opponent]} color={opponent} toMove={active && game.turn === opponent} />
+        {/* On passe la présence de l'adversaire : pastille et éventuel compte à rebours. */}
+        <PlayerBar
+          player={game[opponent]}
+          color={opponent}
+          toMove={active && game.turn === opponent}
+          presence={presence?.[opponent]}
+          active={active}
+        />
         {/* On ne peut cliquer que si c'est notre tour et qu'aucun envoi n'est en cours. */}
         <ChessBoard
           fen={game.fen}
@@ -130,6 +140,8 @@ export default function Game({ loaderData }) {
 
       <aside className="card side-panel">
         <p className="muted small">Partie {game.code}</p>
+        {/* Récit 12 : le nombre de spectateurs, dès que le serveur a envoyé la présence. */}
+        {presence && <SpectatorCount count={presence.spectators} />}
 
         {/* Partie en cours : statut, erreur et abandon. Partie terminée : le résultat. */}
         {active ? (
@@ -175,15 +187,26 @@ export default function Game({ loaderData }) {
 
 // Le bandeau d'un joueur : couleur, nom et Elo. toMove le surligne quand c'est à lui de jouer.
 // Après la partie, on affiche son nouvel Elo (eloAfter) plutôt que l'ancien.
-function PlayerBar({ player, color, toMove, you = false }) {
+// presence (seulement pour l'adversaire) : { online, remainingMs } envoyé par le serveur.
+function PlayerBar({ player, color, toMove, you = false, presence, active = false }) {
+  // Le compte à rebours ne s'affiche que si la partie est en cours, que le joueur
+  // est hors ligne et que le serveur a envoyé un temps restant.
+  const showCountdown = active && presence && !presence.online && presence.remainingMs != null;
   // player peut être null dans un salon; l'opérateur ?. affiche alors un tiret.
   return (
-    <div className={`player-bar ${toMove ? 'to-move' : ''}`}>
-      <span className={`swatch ${color}`} aria-hidden="true" />
-      <span className="player-name">
-        {player?.name ?? '—'} {you && <span className="muted">(vous)</span>}
-      </span>
-      <span className="elo">{player?.eloAfter ?? player?.elo}</span>
+    <div className="player-bar-wrap">
+      <div className={`player-bar ${toMove ? 'to-move' : ''}`}>
+        <span className={`swatch ${color}`} aria-hidden="true" />
+        <span className="player-name">
+          {player?.name ?? '—'} {you && <span className="muted">(vous)</span>}
+        </span>
+        {/* Récit 8 : la pastille en ligne / hors ligne de l'adversaire. */}
+        {presence && <OnlineDot online={presence.online} />}
+        <span className="elo">{player?.eloAfter ?? player?.elo}</span>
+      </div>
+      {/* Récit 9 : key={remainingMs} fait repartir le compte à rebours à chaque
+          nouvelle annonce du serveur (par exemple après une reconnexion ratée). */}
+      {showCountdown && <Countdown key={presence.remainingMs} remainingMs={presence.remainingMs} />}
     </div>
   );
 }
