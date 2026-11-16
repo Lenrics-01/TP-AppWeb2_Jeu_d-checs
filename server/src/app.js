@@ -109,12 +109,19 @@ export function createApp({ repo, github, devLogin = false, random = Math.random
     res.json(service.view(code, req.player.id));
   });
 
-  // L'état d'une partie. Appelée toutes les secondes par le client (interrogation périodique).
-  app.get('/api/games/:code', requireAuth, (req, res) => {
-    // Ce endpoint sert au chargement initial et au polling de l'adversaire.
-    const game = loadGameFor(req, res);
-    if (!game) return;
-    res.json(service.view(game.code, req.player.id));
+  // L'état d'une partie, pour le premier affichage (rendu serveur). Ensuite, les
+  // changements arrivent par Socket.IO.
+  // Récit 11 : lisible SANS compte, pour un spectateur. Seulement lire : les routes
+  // qui écrivent (/moves, /resign) gardent requireAuth et le contrôle 403.
+  app.get('/api/games/:code', (req, res) => {
+    const game = repo.games.find(normalizeCode(req.params.code));
+    const playerId = req.player?.id ?? null;
+    // Une partie en attente n'est visible que par son créateur (le salon d'attente).
+    if (!game || (game.status === 'waiting' && game.creator_id !== playerId)) {
+      return res.status(404).json({ error: 'Partie introuvable.' });
+    }
+    // yourColor vaut null pour un spectateur.
+    res.json(service.view(game.code, playerId));
   });
 
   // ------------------------------------------------------------------- Coups
@@ -188,7 +195,10 @@ export function createApp({ repo, github, devLogin = false, random = Math.random
 
   // ------------------------------------------------------------ Fonctions utiles
 
-  /** Charge la partie et vérifie que le joueur connecté y participe. */
+  /**
+   * Pour les routes qui ÉCRIVENT (coup, abandon) : charge la partie et vérifie que
+   * le joueur connecté y participe. Un spectateur connecté reçoit 403.
+   */
   function loadGameFor(req, res) {
     // Le code d'URL est normalisé avant la recherche en base.
     const game = repo.games.find(normalizeCode(req.params.code));
@@ -196,8 +206,8 @@ export function createApp({ repo, github, devLogin = false, random = Math.random
       res.status(404).json({ error: 'Partie introuvable.' });
       return null;
     }
-    // Le créateur peut suivre sa partie en attente ; ensuite, seuls les deux joueurs.
-    // Le créateur peut voir le salon; après le démarrage, seuls les deux joueurs ont accès.
+    // Les deux joueurs, plus le créateur d'une partie en attente : requireActive lui
+    // répondra ensuite « pas encore commencée » (409) plutôt que 403.
     const isCreator = game.creator_id === req.player.id;
     if (!isCreator && !colorOf(game, req.player.id)) {
       res.status(403).json({ error: 'Vous ne participez pas à cette partie.' });
