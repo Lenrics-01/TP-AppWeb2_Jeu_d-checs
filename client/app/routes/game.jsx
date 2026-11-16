@@ -1,14 +1,16 @@
 // La partie. Premier affichage rendu côté serveur (l'échiquier est dans le HTML),
 // puis mises à jour côté client : Socket.IO (useGameSocket) et coups envoyés par fetcher.
+// Récit 11 : un spectateur, même sans compte, suit la partie sans pouvoir jouer.
 // useState conserve l'état temporaire de confirmation de l'abandon.
 import { useState } from 'react';
 // Link navigue sans rechargement; data et redirect contrôlent les loaders;
 // useFetcher envoie des actions sans changer l'adresse de la page.
 import { Link, data, redirect, useFetcher } from 'react-router';
-// Cette fonction appelle l'API et redirige vers la connexion si nécessaire.
-import { apiOrLogin } from '../api.js';
-// Une partie ne peut pas être chargée par un visiteur anonyme.
-import { requireToken } from '../session.js';
+// api appelle l'API sans jeton (spectateur sans compte) ; apiOrLogin avec jeton,
+// et renvoie vers la connexion si le jeton n'est plus valide.
+import { api, apiOrLogin } from '../api.js';
+// getToken : le jeton s'il existe, sinon null (spectateur sans compte).
+import { getToken } from '../session.js';
 // L'échiquier gère les clics et remonte le coup choisi au parent.
 import ChessBoard from '../components/ChessBoard.jsx';
 // Le hook reçoit la partie en direct par Socket.IO (coups de l'adversaire).
@@ -22,10 +24,13 @@ export function meta({ params }) {
 }
 
 export async function loader({ request, params }) {
-  // Le cookie permet au serveur du client de transmettre le bon Bearer token.
-  const token = await requireToken(request);
+  // Le jeton est facultatif : sans compte, on regarde la partie en spectateur.
+  const token = await getToken(request);
   // L'état initial contient la FEN, les joueurs, le tour et l'historique SAN.
-  const res = await apiOrLogin(`/api/games/${params.code}`, { token });
+  // Avec jeton : l'API renvoie notre couleur. Sans jeton : yourColor vaut null (M6).
+  const res = token
+    ? await apiOrLogin(`/api/games/${params.code}`, { token })
+    : await api(`/api/games/${params.code}`);
   // data transforme une erreur API en erreur de route affichée par ErrorBoundary.
   if (!res.ok) throw data(res.data?.error ?? 'Partie introuvable.', { status: res.status });
   // Une partie non commencée doit rester dans le salon, pas sur l'échiquier.
@@ -38,7 +43,10 @@ export async function loader({ request, params }) {
 // partie terminée) ; ici on relaie seulement sa réponse ou son message d'erreur.
 export async function action({ request, params }) {
   // Toutes les écritures de cette page passent par cette action serveur.
-  const token = await requireToken(request);
+  // Un spectateur sans compte n'a pas de jeton : on refuse tout de suite.
+  // (L'API refuserait de toute façon : 401 sans compte, 403 si on n'est pas joueur.)
+  const token = await getToken(request);
+  if (!token) return { error: 'En spectateur, vous ne pouvez pas jouer.' };
   // Le formulaire virtuel de useFetcher contient intent et les champs du coup.
   const form = await request.formData();
   // intent permet de partager une action entre jouer et abandonner.
@@ -89,16 +97,21 @@ export default function Game({ loaderData }) {
   const mover = useFetcher();
   // État local : true pendant qu'on demande la confirmation de l'abandon.
   const [confirmResign, setConfirmResign] = useState(false);
+  // État local : true après un clic sur « Copier le lien de la partie ».
+  const [linkCopied, setLinkCopied] = useState(false);
 
   // Valeurs calculées à chaque rendu à partir de la partie : pas besoin de useState.
-  // yourColor vaut white ou black et permet d'orienter l'échiquier vers le joueur.
-  const me = game.yourColor;
+  // Récit 11 : yourColor vaut null quand on n'est pas un des deux joueurs.
+  const spectator = game.yourColor == null;
+  // En spectateur, on montre les blancs en bas, comme sur un échiquier classique.
+  const me = spectator ? 'white' : game.yourColor;
   // L'autre couleur sert à afficher l'adversaire au-dessus du plateau.
   const opponent = me === 'white' ? 'black' : 'white';
   // Une partie active accepte des coups; une partie terminée affiche le résultat.
   const active = game.status === 'active';
   // Le joueur ne peut jouer que si la couleur du tour correspond à la sienne.
-  const myTurn = active && game.turn === me;
+  // Un spectateur ne joue jamais.
+  const myTurn = !spectator && active && game.turn === me;
   // pending évite deux clics pendant que le serveur traite le premier coup.
   const pending = mover.state !== 'idle';
 
@@ -115,10 +128,16 @@ export default function Game({ loaderData }) {
     mover.submit({ intent: 'resign' }, { method: 'post' });
   }
 
+  // Copie l'adresse de la page pour inviter des spectateurs.
+  async function copyLink() {
+    await navigator.clipboard.writeText(window.location.href);
+    setLinkCopied(true);
+  }
+
   return (
     <div className="game-layout">
       <div className="board-column">
-        {/* L'adversaire en haut, soi-même en bas. */}
+        {/* L'adversaire en haut, soi-même en bas (en spectateur : noirs en haut, blancs en bas). */}
         {/* On passe la présence de l'adversaire : pastille et éventuel compte à rebours. */}
         <PlayerBar
           player={game[opponent]}
@@ -126,6 +145,7 @@ export default function Game({ loaderData }) {
           toMove={active && game.turn === opponent}
           presence={presence?.[opponent]}
           active={active}
+          spectator={spectator}
         />
         {/* On ne peut cliquer que si c'est notre tour et qu'aucun envoi n'est en cours. */}
         <ChessBoard
@@ -135,16 +155,36 @@ export default function Game({ loaderData }) {
           lastMove={game.lastMove}
           onMove={playMove}
         />
-        <PlayerBar player={game[me]} color={me} toMove={myTurn} you />
+        {/* En spectateur, on affiche aussi la présence du joueur du bas. */}
+        <PlayerBar
+          player={game[me]}
+          color={me}
+          toMove={active && game.turn === me}
+          you={!spectator}
+          presence={spectator ? presence?.[me] : undefined}
+          active={active}
+          spectator={spectator}
+        />
       </div>
 
       <aside className="card side-panel">
         <p className="muted small">Partie {game.code}</p>
+        {/* Récit 11 : bannière qui dit clairement qu'on ne peut pas jouer. */}
+        {spectator && <p className="spectator-banner">Vous regardez la partie en direct</p>}
         {/* Récit 12 : le nombre de spectateurs, dès que le serveur a envoyé la présence. */}
         {presence && <SpectatorCount count={presence.spectators} />}
+        {/* Les joueurs peuvent inviter des spectateurs en partageant le lien. */}
+        {!spectator && (
+          <button type="button" className="secondary" onClick={copyLink}>
+            {linkCopied ? 'Lien copié !' : 'Copier le lien de la partie'}
+          </button>
+        )}
 
-        {/* Partie en cours : statut, erreur et abandon. Partie terminée : le résultat. */}
-        {active ? (
+        {/* Partie en cours : statut, erreur et abandon (joueurs seulement).
+            Partie terminée : le résultat. */}
+        {active && spectator ? (
+          <p className="status">Au tour des {game.turn === 'white' ? 'blancs' : 'noirs'}</p>
+        ) : active ? (
           // <>...</> (fragment) : regroupe plusieurs éléments sans ajouter de balise.
           <>
             {/* Un coup noté en SAN qui finit par « + » met le roi adverse en échec. */}
@@ -175,7 +215,7 @@ export default function Game({ loaderData }) {
             )}
           </>
         ) : (
-          <GameResult game={game} />
+          <GameResult game={game} spectator={spectator} />
         )}
 
         <h2>Coups</h2>
@@ -188,7 +228,7 @@ export default function Game({ loaderData }) {
 // Le bandeau d'un joueur : couleur, nom et Elo. toMove le surligne quand c'est à lui de jouer.
 // Après la partie, on affiche son nouvel Elo (eloAfter) plutôt que l'ancien.
 // presence (seulement pour l'adversaire) : { online, remainingMs } envoyé par le serveur.
-function PlayerBar({ player, color, toMove, you = false, presence, active = false }) {
+function PlayerBar({ player, color, toMove, you = false, presence, active = false, spectator = false }) {
   // Le compte à rebours ne s'affiche que si la partie est en cours, que le joueur
   // est hors ligne et que le serveur a envoyé un temps restant.
   const showCountdown = active && presence && !presence.online && presence.remainingMs != null;
@@ -206,18 +246,20 @@ function PlayerBar({ player, color, toMove, you = false, presence, active = fals
       </div>
       {/* Récit 9 : key={remainingMs} fait repartir le compte à rebours à chaque
           nouvelle annonce du serveur (par exemple après une reconnexion ratée). */}
-      {showCountdown && <Countdown key={presence.remainingMs} remainingMs={presence.remainingMs} />}
+      {showCountdown && (
+        <Countdown key={presence.remainingMs} remainingMs={presence.remainingMs} spectator={spectator} />
+      )}
     </div>
   );
 }
 
 // Récit 6 : le résultat et les deux classements mis à jour.
-function GameResult({ game }) {
+function GameResult({ game, spectator = false }) {
   // Le titre dépend du point de vue : le même résultat est une victoire pour l'un,
-  // une défaite pour l'autre.
-  // Le résultat renvoyé par l'API est global; le titre doit être calculé selon le joueur courant.
+  // une défaite pour l'autre, et un simple constat pour un spectateur.
   let title;
   if (game.result === 'draw') title = 'Partie nulle';
+  else if (spectator) title = game.result === 'white' ? 'Victoire des blancs' : 'Victoire des noirs';
   else if (game.result === game.yourColor) title = 'Victoire !';
   else title = 'Défaite';
 

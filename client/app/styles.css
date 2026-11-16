@@ -623,3 +623,14 @@ th {
 .spectators {
   margin-top: 0;
 }
+
+/* ---------------------------------------------------------------- Spectateur (projet 2) */
+.spectator-banner {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--gold);
+  border-radius: var(--radius);
+  color: var(--gold-bright);
+  font-weight: 600;
+  text-align: center;
+}

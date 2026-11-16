@@ -21,7 +21,8 @@ export function OnlineDot({ online }) {
 // Le serveur envoie un temps restant (remainingMs), pas une heure de fin, car
 // l'horloge du navigateur peut être décalée. On calcule donc notre propre heure
 // de fin au moment où on reçoit le message, puis on décompte.
-export function Countdown({ remainingMs }) {
+// spectator : le texte change, car un spectateur ne gagne rien.
+export function Countdown({ remainingMs, spectator = false }) {
   // useState(() => ...) : calculé une seule fois, au premier affichage.
   const [end] = useState(() => Date.now() + remainingMs);
   const [now, setNow] = useState(() => Date.now());
@@ -37,7 +38,9 @@ export function Countdown({ remainingMs }) {
   const seconds = Math.max(0, Math.ceil((end - now) / 1000));
   return (
     <p className="countdown" role="timer">
-      Revient dans {seconds} s, sinon vous gagnez
+      {spectator
+        ? `Revient dans ${seconds} s, sinon il perd par abandon`
+        : `Revient dans ${seconds} s, sinon vous gagnez`}
     </p>
   );
 }
