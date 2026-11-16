@@ -4,6 +4,7 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import express from 'express';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 import { createRequestHandler } from '@react-router/express';
 
 const buildDir = path.join(import.meta.dirname, 'build');
@@ -21,11 +22,25 @@ app.use(
 );
 app.use(express.static(path.join(buildDir, 'client'), { maxAge: '1h' }));
 
+// Socket.IO : le navigateur ne parle qu'à ce serveur. /socket.io est relayé vers
+// l'API (http://server:4000 en Docker), qui n'est pas exposée à l'extérieur.
+// Même origine que la page, donc le cookie de session part avec la connexion.
+const socketProxy = createProxyMiddleware({
+  target: process.env.API_URL ?? 'http://localhost:4000',
+  pathFilter: '/socket.io',
+  ws: true,
+});
+// Avant React Router, sinon il répondrait 404 à /socket.io.
+app.use(socketProxy);
+
 app.use(createRequestHandler({ build }));
 
 const server = app.listen(port, () => {
   console.log(`Client prêt sur http://localhost:${port}`);
 });
+// Le passage de HTTP à WebSocket arrive par l'événement « upgrade » du serveur
+// HTTP, pas par Express : on le confie aussi au proxy.
+server.on('upgrade', socketProxy.upgrade);
 
 // docker compose stop envoie SIGTERM. server.close() attend la fin des requêtes en
 // cours (un loader qui attend l'API, par exemple) : sans closeAllConnections(), Docker

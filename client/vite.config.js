@@ -14,6 +14,15 @@ export default defineConfig(({ mode }) => {
     // un autre ordinateur du même réseau (http://<IP de cet ordi>:3000), pour jouer à
     // deux sur un seul serveur. Désactivé par défaut : avec DEV_LOGIN=true, n'importe
     // qui sur le Wi-Fi pourrait sinon se connecter. L'API (port 4000) reste locale.
-    server: { port: 3000, host: process.env.DEV_HOST === 'true' },
+    server: {
+      port: 3000,
+      host: process.env.DEV_HOST === 'true',
+      // Socket.IO : le navigateur se connecte à /socket.io sur CE serveur (même origine,
+      // donc le cookie de session part avec la connexion), et Vite relaie vers l'API.
+      // ws: true -> relaie aussi le passage de HTTP à WebSocket.
+      proxy: {
+        '/socket.io': { target: process.env.API_URL ?? 'http://localhost:4000', ws: true },
+      },
+    },
   };
 });
