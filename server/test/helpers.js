@@ -4,10 +4,18 @@
 // et sans fichier à nettoyer. Seul GitHub est remplacé par un faux.
 // chess.js prépare les suites de coups envoyées à l'API.
 import { Chess } from 'chess.js';
+// Le client Socket.IO, comme dans le navigateur, mais exécuté par Node.
+import { io as ioClient } from 'socket.io-client';
 // createApp construit la même application que celle lancée en production.
 import { createApp } from '../src/app.js';
+// Le temps réel et le cookie de session, branchés comme dans server.js.
+import { createCookieSession } from '../src/cookieSession.js';
+import { createRealtime } from '../src/realtime.js';
 // La base mémoire isole chaque serveur de test.
 import { createRepository, openDatabase } from '../src/repository/index.js';
+
+// Le secret qui signe les cookies des tests (en production : SESSION_SECRET).
+const TEST_SECRET = 'secret-des-tests';
 
 /** Faux GitHub : le code "user-alice" correspond à l'utilisateur alice. */
 const fakeGithub = {
@@ -24,12 +32,17 @@ export async function startTestServer({ dbFile = ':memory:', random } = {}) {
   // Chaque appel crée une base, une application et un port séparés.
   const repo = createRepository(openDatabase(dbFile));
   // random peut être remplacé pour tester l'attribution des couleurs.
-  const app = createApp({ repo, github: fakeGithub, random });
+  // notify : comme dans server.js, realtime n'existe qu'après le démarrage du serveur.
+  let realtime;
+  const app = createApp({ repo, github: fakeGithub, random, notify: (code) => realtime.notify(code) });
   const server = await new Promise((resolve) => {
     const s = app.listen(0, '127.0.0.1', () => resolve(s));
   });
+  realtime = createRealtime(server, { repo, sessionSecret: TEST_SECRET });
   // Les requêtes utilisent l'adresse du port choisi automatiquement par l'OS.
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  // Les sockets ouverts par le test, fermés dans close().
+  const sockets = [];
 
   /** Envoie une requête à l'API et renvoie { status, body }. */
   async function request(method, path, { token, body } = {}) {
@@ -97,13 +110,104 @@ export async function startTestServer({ dbFile = ':memory:', random } = {}) {
     return res;
   }
 
+  // ------------------------------------------------------------ Temps réel
+
+  /**
+   * Le cookie de session qu'aurait le navigateur de ce joueur (même format que
+   * client/app/session.js). Sans jeton : pas de cookie, donc un spectateur.
+   */
+  async function cookieFor(token) {
+    const cookieSession = createCookieSession(TEST_SECRET);
+    const session = await cookieSession.getSession();
+    session.set('token', token);
+    // « echecs_session=...; Path=/; ... » : l'en-tête Cookie ne garde que la première partie.
+    return (await cookieSession.commitSession(session)).split(';')[0];
+  }
+
+  /**
+   * Ouvre une connexion Socket.IO, comme un onglet du navigateur.
+   * cookie : null (spectateur sans compte) ou la valeur de cookieFor(token).
+   * auth : ce que le client envoie de lui-même à l'ouverture (le serveur doit l'ignorer).
+   */
+  async function connectWithCookie(cookie, auth = {}) {
+    const socket = ioClient(baseUrl, {
+      transports: ['websocket'],
+      extraHeaders: cookie ? { cookie } : {},
+      auth,
+      reconnection: false, // un test ferme et rouvre lui-même ses connexions
+    });
+    sockets.push(socket);
+    await waitFor(socket, 'connect');
+    return socket;
+  }
+
+  /** Ouvre une connexion au nom de ce joueur (ou sans compte si token est absent). */
+  async function connect(token) {
+    return connectWithCookie(token ? await cookieFor(token) : null);
+  }
+
+  /**
+   * Rejoint le salon d'une partie. Renvoie le premier « game:state » reçu
+   * (l'état complet), ou lève une erreur si le serveur refuse.
+   */
+  async function join(socket, code) {
+    // On écoute AVANT d'envoyer : le serveur envoie l'état juste avant de répondre.
+    const firstState = waitFor(socket, 'game:state');
+    const reply = await socket.timeout(2000).emitWithAck('game:join', code);
+    if (reply.error) {
+      // Refusé : aucun état n'arrivera, on abandonne donc cette attente sans erreur.
+      firstState.catch(() => {});
+      throw new Error(reply.error);
+    }
+    return firstState;
+  }
+
   async function close() {
-    // On ferme d'abord les connexions HTTP, puis la base SQLite.
-    // fetch garde les connexions ouvertes (keep-alive) : on les ferme d'abord.
+    // On ferme d'abord les sockets du test, puis Socket.IO et le serveur HTTP,
+    // puis la base SQLite.
+    for (const socket of sockets) socket.close();
+    // fetch garde les connexions ouvertes (keep-alive) : closeAllConnections les ferme.
+    const closed = realtime.io.close();
     server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    await closed;
     repo.close();
   }
 
-  return { baseUrl, repo, request, login, startGame, playSan, close };
+  return {
+    baseUrl, repo, request, login, startGame, playSan,
+    cookieFor, connectWithCookie, connect, join, close,
+  };
+}
+
+/**
+ * Attend le prochain « event » reçu par ce socket qui respecte la condition.
+ * Échoue après ms millisecondes : un test ne reste jamais bloqué.
+ */
+export function waitFor(socket, event, condition = () => true, ms = 2000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.off(event, onEvent);
+      reject(new Error(`Aucun « ${event} » reçu en ${ms} ms.`));
+    }, ms);
+    function onEvent(data) {
+      if (!condition(data)) return;
+      clearTimeout(timer);
+      socket.off(event, onEvent);
+      resolve(data);
+    }
+    socket.on(event, onEvent);
+  });
+}
+
+/**
+ * Vérifie qu'AUCUN « event » respectant la condition n'arrive pendant ms millisecondes.
+ * Sert à prouver qu'une chose n'a pas eu lieu.
+ */
+export function expectNothing(socket, event, condition = () => true, ms = 300) {
+  return waitFor(socket, event, condition, ms).then(
+    (data) => {
+      throw new Error(`« ${event} » reçu alors qu'il ne devait pas l'être : ${JSON.stringify(data)}`);
+    },
+    () => undefined,
+  );
 }
