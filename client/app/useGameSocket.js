@@ -20,12 +20,13 @@ function version(game) {
  * Renvoie { game, presence, connected } :
  * - game : la version la plus récente (loader ou socket) ;
  * - presence : { white: { online, remainingMs }, black: {...}, spectators } ou null ;
- * - connected : false pendant une coupure réseau.
+ * - connected : null avant la première connexion, true si connecté,
+ *   false après une coupure réseau (pour afficher « reconnexion… »).
  */
 export function useGameSocket(initialGame) {
   const [socketGame, setSocketGame] = useState(null);
   const [presence, setPresence] = useState(null);
-  const [connected, setConnected] = useState(false);
+  const [connected, setConnected] = useState(null);
 
   useEffect(() => {
     const socket = io();
