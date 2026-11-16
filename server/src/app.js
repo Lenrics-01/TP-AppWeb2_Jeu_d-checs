@@ -7,8 +7,9 @@ import { createGameService, normalizeCode } from './gameService.js';
  * Construit l'application Express. Toutes les dépendances sont passées en paramètre
  * (base, client GitHub, hasard) : les tests peuvent ainsi fournir une base en mémoire,
  * un faux GitHub et un tirage des couleurs prévisible.
+ * notify(code) : prévient en direct les navigateurs qui regardent la partie (realtime.js).
  */
-export function createApp({ repo, github, devLogin = false, random = Math.random }) {
+export function createApp({ repo, github, devLogin = false, random = Math.random, notify = () => {} }) {
   // view (ce que le client reçoit) et finish (fin de partie + Elo), partagés avec le temps réel.
   const service = createGameService(repo);
   // express() crée le routeur auquel seront attachés middleware et endpoints.
@@ -103,6 +104,8 @@ export function createApp({ repo, github, devLogin = false, random = Math.random
       // Quelqu'un d'autre a utilisé le code entre la lecture et l'écriture.
       return res.status(409).json({ error: 'Ce code a déjà été utilisé.' });
     }
+    // Le créateur attend dans le salon : il apprend en direct que la partie commence.
+    notify(code);
     res.json(service.view(code, req.player.id));
   });
 
@@ -155,6 +158,8 @@ export function createApp({ repo, github, devLogin = false, random = Math.random
       });
       if (end) service.finish(game.code, end);
     });
+    // Récit 7 : l'adversaire et les spectateurs reçoivent le coup sans recharger.
+    notify(game.code);
     res.json(service.view(game.code, req.player.id));
   });
 
@@ -165,6 +170,7 @@ export function createApp({ repo, github, devLogin = false, random = Math.random
     if (!requireActive(game, res)) return;
     const winner = opponentOf(colorOf(game, req.player.id));
     repo.transaction(() => service.finish(game.code, { result: winner, reason: 'resignation' }));
+    notify(game.code);
     res.json(service.view(game.code, req.player.id));
   });
 
