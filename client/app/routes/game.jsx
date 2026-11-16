@@ -1,5 +1,5 @@
 // La partie. Premier affichage rendu côté serveur (l'échiquier est dans le HTML),
-// puis mises à jour côté client : polling (useChessGame) et coups envoyés par fetcher.
+// puis mises à jour côté client : Socket.IO (useGameSocket) et coups envoyés par fetcher.
 // useState conserve l'état temporaire de confirmation de l'abandon.
 import { useState } from 'react';
 // Link navigue sans rechargement; data et redirect contrôlent les loaders;
@@ -11,8 +11,8 @@ import { apiOrLogin } from '../api.js';
 import { requireToken } from '../session.js';
 // L'échiquier gère les clics et remonte le coup choisi au parent.
 import ChessBoard from '../components/ChessBoard.jsx';
-// Le hook fusionne le jeu initial avec les mises à jour de l'adversaire.
-import { useChessGame } from '../useChessGame.js';
+// Le hook reçoit la partie en direct par Socket.IO (coups de l'adversaire).
+import { useGameSocket } from '../useGameSocket.js';
 
 export function meta({ params }) {
   // params.code vient du segment dynamique games/:code.
@@ -28,7 +28,7 @@ export async function loader({ request, params }) {
   if (!res.ok) throw data(res.data?.error ?? 'Partie introuvable.', { status: res.status });
   // Une partie non commencée doit rester dans le salon, pas sur l'échiquier.
   if (res.data.status === 'waiting') throw redirect(`/lobby/${res.data.code}`);
-  // Le composant reçoit un objet stable nommé game pour correspondre à useChessGame.
+  // Le composant reçoit un objet nommé game, transmis ensuite à useGameSocket.
   return { game: res.data };
 }
 
@@ -79,13 +79,10 @@ const REASONS = {
 
 export default function Game({ loaderData }) {
   // La version la plus récente de la partie : celle du loader (premier affichage,
-  // ou après notre coup) ou celle reçue par le polling (coup de l'adversaire).
-  // Le loader donne la première version; le hook la remplace seulement par une version plus récente.
-  const game = useChessGame(loaderData.game);
+  // ou après notre coup) ou celle reçue par Socket.IO (coup de l'adversaire).
+  const { game } = useGameSocket(loaderData.game);
   // useFetcher envoie un coup ou l'abandon à l'action de cette page, sans changer d'URL.
   // mover.state : 'idle' ou envoi en cours ; mover.data : la réponse de l'action.
-  // Ce fetcher est distinct du fetcher interne de useChessGame, donc un polling
-  // ne peut pas écraser l'état d'envoi d'un coup.
   const mover = useFetcher();
   // État local : true pendant qu'on demande la confirmation de l'abandon.
   const [confirmResign, setConfirmResign] = useState(false);
