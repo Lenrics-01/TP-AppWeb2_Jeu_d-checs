@@ -11,6 +11,13 @@ import { createCookieSessionStorage } from 'react-router';
 const COOKIE_NAME = 'echecs_session';
 export const DEV_SESSION_SECRET = 'secret-de-developpement-seulement';
 
+export function sessionSecretFromEnv(env) {
+  if (env.NODE_ENV === 'production' && !env.SESSION_SECRET) {
+    throw new Error('SESSION_SECRET est obligatoire en production.');
+  }
+  return env.SESSION_SECRET ?? DEV_SESSION_SECRET;
+}
+
 export function createCookieSession(secret) {
   return createCookieSessionStorage({
     cookie: { name: COOKIE_NAME, secrets: [secret] },

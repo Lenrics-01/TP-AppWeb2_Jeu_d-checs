@@ -127,6 +127,95 @@ describe('Récit 7 : je vois le coup de mon adversaire sans recharger', () => {
   });
 });
 
+describe('Présence et délai de déconnexion', () => {
+  it('annonce hors ligne à l’adversaire quand le dernier socket du joueur ferme', async () => {
+    const local = await startTestServer({ graceMs: 200 });
+    try {
+      const game = await local.startGame();
+      const white = await local.connect(game.white.token);
+      const black = await local.connect(game.black.token);
+      await local.join(white, game.code);
+      await local.join(black, game.code);
+
+      const offline = waitFor(black, 'presence', (state) => !state.white.online);
+      white.disconnect();
+      assert.equal((await offline).white.online, false);
+    } finally {
+      await local.close();
+    }
+  });
+
+  it('termine la partie après le délai et met à jour les Elo', async () => {
+    const local = await startTestServer({ graceMs: 200 });
+    try {
+      const game = await local.startGame();
+      const white = await local.connect(game.white.token);
+      const black = await local.connect(game.black.token);
+      await local.join(white, game.code);
+      await local.join(black, game.code);
+
+      const finished = waitFor(black, 'game:state', (state) => state.status === 'finished');
+      white.disconnect();
+      const state = await finished;
+
+      assert.equal(state.result, 'black');
+      assert.equal(state.reason, 'disconnect');
+      assert.equal(state.white.eloAfter, 990);
+      assert.equal(state.black.eloAfter, 1010);
+    } finally {
+      await local.close();
+    }
+  });
+
+  it('annule le délai si le joueur revient avant son expiration', async () => {
+    const local = await startTestServer({ graceMs: 200 });
+    try {
+      const game = await local.startGame();
+      const black = await local.connect(game.black.token);
+      await local.join(black, game.code);
+      const firstWhite = await local.connect(game.white.token);
+      await local.join(firstWhite, game.code);
+
+      const offline = waitFor(black, 'presence', (state) => !state.white.online);
+      firstWhite.disconnect();
+      await offline;
+
+      const online = waitFor(black, 'presence', (state) => state.white.online);
+      const returningWhite = await local.connect(game.white.token);
+      await local.join(returningWhite, game.code);
+      assert.equal((await online).white.online, true);
+      assert.equal(local.repo.games.find(game.code).white_disconnect_deadline, null);
+      assert.equal((await local.request('GET', `/api/games/${game.code}`)).body.status, 'active');
+    } finally {
+      await local.close();
+    }
+  });
+
+  it('garde le joueur en ligne tant qu’un autre de ses onglets reste ouvert', async () => {
+    const local = await startTestServer({ graceMs: 200 });
+    try {
+      const game = await local.startGame();
+      const black = await local.connect(game.black.token);
+      const firstWhite = await local.connect(game.white.token);
+      const secondWhite = await local.connect(game.white.token);
+      await local.join(black, game.code);
+      await local.join(firstWhite, game.code);
+      await local.join(secondWhite, game.code);
+
+      const stayedOnline = expectNothing(black, 'presence', (state) => !state.white.online, 300);
+      firstWhite.disconnect();
+      await stayedOnline;
+      assert.equal(local.repo.games.find(game.code).white_disconnect_deadline, null);
+
+      const offline = waitFor(black, 'presence', (state) => !state.white.online);
+      secondWhite.disconnect();
+      assert.equal((await offline).white.online, false);
+    } finally {
+      await local.close();
+    }
+  });
+});
+
 describe('Récit 10 : après un rechargement ou une coupure, je retrouve la partie', () => {
   it('une nouvelle connexion reçoit l’état complet, coups joués pendant l’absence compris', async () => {
     const game = await api.startGame();

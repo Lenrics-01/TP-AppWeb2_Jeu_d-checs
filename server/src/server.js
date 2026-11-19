@@ -5,7 +5,7 @@ import { createApp } from './app.js';
 // Le client GitHub garde le secret OAuth côté serveur.
 import { createGithubClient } from './auth.js';
 // Le secret de développement, le même que celui du client (client/app/session.js).
-import { DEV_SESSION_SECRET } from './cookieSession.js';
+import { sessionSecretFromEnv } from './cookieSession.js';
 // Le temps réel : Socket.IO, branché sur le même serveur HTTP qu'Express.
 import { createRealtime } from './realtime.js';
 // Le repository regroupe l'accès SQLite et son initialisation.
@@ -15,6 +15,7 @@ import { createRepository, openDatabase, seedDatabase } from './repository/index
 const { GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET } = process.env;
 const dbPath = process.env.DB_PATH ?? 'data/echecs.sqlite';
 const port = Number(process.env.PORT ?? 4000);
+const sessionSecret = sessionSecretFromEnv(process.env);
 
 if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
   console.warn('GITHUB_CLIENT_ID ou GITHUB_CLIENT_SECRET manquant : la connexion GitHub échouera.');
@@ -47,7 +48,7 @@ const server = app.listen(port, () => {
 // Socket.IO partage ce serveur et ce port : les requêtes /socket.io/ sont pour lui.
 realtime = createRealtime(server, {
   repo,
-  sessionSecret: process.env.SESSION_SECRET ?? DEV_SESSION_SECRET,
+  sessionSecret,
 });
 
 // docker compose stop envoie SIGTERM : on ferme proprement la base avant de quitter.
