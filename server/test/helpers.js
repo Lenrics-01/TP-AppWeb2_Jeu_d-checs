@@ -28,7 +28,7 @@ const fakeGithub = {
   },
 };
 
-export async function startTestServer({ dbFile = ':memory:', random } = {}) {
+export async function startTestServer({ dbFile = ':memory:', random, graceMs } = {}) {
   // Chaque appel crée une base, une application et un port séparés.
   const repo = createRepository(openDatabase(dbFile));
   // random peut être remplacé pour tester l'attribution des couleurs.
@@ -38,7 +38,7 @@ export async function startTestServer({ dbFile = ':memory:', random } = {}) {
   const server = await new Promise((resolve) => {
     const s = app.listen(0, '127.0.0.1', () => resolve(s));
   });
-  realtime = createRealtime(server, { repo, sessionSecret: TEST_SECRET });
+  realtime = createRealtime(server, { repo, sessionSecret: TEST_SECRET, graceMs });
   // Les requêtes utilisent l'adresse du port choisi automatiquement par l'OS.
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
   // Les sockets ouverts par le test, fermés dans close().
@@ -167,7 +167,7 @@ export async function startTestServer({ dbFile = ':memory:', random } = {}) {
     // puis la base SQLite.
     for (const socket of sockets) socket.close();
     // fetch garde les connexions ouvertes (keep-alive) : closeAllConnections les ferme.
-    const closed = realtime.io.close();
+    const closed = realtime.close();
     server.closeAllConnections();
     await closed;
     repo.close();
