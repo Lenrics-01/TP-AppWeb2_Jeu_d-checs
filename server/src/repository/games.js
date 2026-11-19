@@ -63,6 +63,20 @@ export function createGamesRepository(db) {
      ORDER BY g.finished_at DESC, g.rowid DESC
      LIMIT ?`,
   );
+  const selectDeadlines = db.prepare(
+    `SELECT code, white_disconnect_deadline, black_disconnect_deadline
+     FROM games
+     WHERE status = 'active'
+       AND (white_disconnect_deadline IS NOT NULL OR black_disconnect_deadline IS NOT NULL)`,
+  );
+
+  function deadlineStatement(color, operation) {
+    if (color !== 'white' && color !== 'black') throw new TypeError('Couleur invalide.');
+    const column = `${color}_disconnect_deadline`;
+    return operation === 'set'
+      ? db.prepare(`UPDATE games SET ${column} = ? WHERE code = ? AND status = 'active'`)
+      : db.prepare(`UPDATE games SET ${column} = NULL WHERE code = ?`);
+  }
 
   return {
     /** Crée une partie en attente et renvoie son code (unique). */
@@ -112,6 +126,18 @@ export function createGamesRepository(db) {
     /** Les parties terminées d'un joueur, la plus récente en premier. */
     history(playerId, limit = 20) {
       return selectHistory.all(playerId, playerId, limit);
+    },
+
+    setDeadline(code, color, ms) {
+      return deadlineStatement(color, 'set').run(ms, code).changes === 1;
+    },
+
+    clearDeadline(code, color) {
+      return deadlineStatement(color, 'clear').run(code).changes === 1;
+    },
+
+    listDeadlines() {
+      return selectDeadlines.all();
     },
   };
 }

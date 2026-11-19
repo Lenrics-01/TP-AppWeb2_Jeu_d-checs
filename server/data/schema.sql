@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS games (
     white_elo_after INTEGER,
     black_elo_before INTEGER,
     black_elo_after INTEGER,
+    white_disconnect_deadline INTEGER,
+    black_disconnect_deadline INTEGER,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     finished_at TEXT
 );

@@ -23,6 +23,12 @@ export function openDatabase(file = ':memory:') {
   // schema.sql contient CREATE TABLE IF NOT EXISTS : l'appel est idempotent et
   // peut être fait à chaque démarrage sans effacer les données existantes.
   db.exec(fs.readFileSync(path.join(dataFolder, 'schema.sql'), 'utf-8'));
+  const columns = db.prepare('PRAGMA table_info(games)').all().map((column) => column.name);
+  for (const column of ['white_disconnect_deadline', 'black_disconnect_deadline']) {
+    if (!columns.includes(column)) {
+      db.exec(`ALTER TABLE games ADD COLUMN ${column} INTEGER`);
+    }
+  }
   return db;
 }
 
